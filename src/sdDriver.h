@@ -20,6 +20,13 @@ bool getCardCSD(uint8_t * buffer);
 #define CSD_RESPONSE_SIZE 16
 
 /**
+  get the size of the SD card in blocks
+*/
+uint32_t getCardSize();
+
+uint16_t getBlockSize();
+
+/**
   read a block of data from the SD card.
   buffer MUST be RW_BLCOK_SIZE bytes.
   addr is in blocks.

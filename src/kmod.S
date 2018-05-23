@@ -23,6 +23,7 @@ __jump_vector:
 
 	/* jump vectors. replace Default_Handler with you handler as required*/
   .long initDefault  // 0
+  .long initFat32Driver
   .long Default_Handler
   .long Default_Handler
   .long Default_Handler
@@ -30,32 +31,31 @@ __jump_vector:
   .long Default_Handler
   .long Default_Handler
   .long Default_Handler
-  .long Default_Handler
+  .long Default_Handler // 9
+
   .long Default_Handler // 10
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler // 19
 
-  .long Default_Handler // 11
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
   .long Default_Handler // 20
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler
+  .long Default_Handler // 29
 
-  .long Default_Handler // 21
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
   .long Default_Handler // 30
-
-  .long Default_Handler // 31
   .long Default_Handler
   .long Default_Handler
   .long Default_Handler
@@ -64,7 +64,7 @@ __jump_vector:
   .long Default_Handler
   .long Default_Handler
   .long Default_Handler
-  .long Default_Handler // 40
+  .long printFATInfo   // 39
 
 	.size	__jump_vector, . - __jump_vector
 

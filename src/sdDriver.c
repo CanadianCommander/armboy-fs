@@ -183,6 +183,14 @@ bool getCardCSD(uint8_t * buffer){
   }
 }
 
+uint32_t getCardSize(){
+  return cardBlockCount;
+}
+
+uint16_t getBlockSize(){
+  return RW_BLOCK_SIZE;
+}
+
 bool readBlock(uint8_t * buffer, uint32_t addr){
   if(!checkAddress(addr)){
     return false;
