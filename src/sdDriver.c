@@ -149,8 +149,7 @@ bool initDefault(void){
     printf("SD Card init error, cannot get CSD register\n");
     return false;
   }
-  cardBlockCount = ((((uint32_t)csd[7] & 0x3F) << 16) | ((uint16_t)csd[8] << 8) | csd[9]) + 1;
-
+  cardBlockCount = (((((uint32_t)csd[7] & 0x3F) << 16) | ((uint16_t)csd[8] << 8) | csd[9]) + 1)*1024;
   return true;
 }
 
@@ -193,6 +192,7 @@ uint16_t getBlockSize(){
 
 bool readBlock(uint8_t * buffer, uint32_t addr){
   if(!checkAddress(addr)){
+    printf("ERROR: SD addressing Error. %x out of bounds\n",addr);
     return false;
   }
 
@@ -204,7 +204,8 @@ bool readBlock(uint8_t * buffer, uint32_t addr){
   cmd17[4] = 0xFF & (addr      );
   cmd17[5] = 0x01;
 
-  if(sendCommand(cmd17) == 0x00){
+  uint8_t r = sendCommand(cmd17);
+  if(r == 0x00){
     int z =0;
     for(z=0; z < TIMEOUT_RW_BLOCK; z++){
       if(getNextByte() == 0xFE){
@@ -226,11 +227,13 @@ bool readBlock(uint8_t * buffer, uint32_t addr){
       return true;
     }
     else{
+      printf("ERROR: could not read block, TIMEOUT\n");
       waitForCard();
       return false;
     }
   }
   else {
+    printf("ERROR: could not read block, SD reply: %x\n", r);
     waitForCard();
     return false;
   }
@@ -239,6 +242,7 @@ bool readBlock(uint8_t * buffer, uint32_t addr){
 
 bool writeBlock(uint8_t * buffer, uint32_t addr){
   if(!checkAddress(addr)){
+    printf("ERROR: SD addressing Error. %x out of bounds\n",addr);
     return false;
   }
 
@@ -250,7 +254,8 @@ bool writeBlock(uint8_t * buffer, uint32_t addr){
   cmd24[4] = 0xFF & (addr      );
   cmd24[5] = 0x01;
 
-  if(sendCommand(cmd24) == 0x00){
+  uint8_t r = sendCommand(cmd24);
+  if(r == 0x00){
     getNextByte();// delay one byte
 
     writeNextByte(0xFE); // data block header
@@ -277,10 +282,12 @@ bool writeBlock(uint8_t * buffer, uint32_t addr){
       }
     }
     //fail for some reason
+    printf("ERROR: could not write block, TIMEOUT\n");
     waitForCard();
     return false;
   }
   else{
+    printf("ERROR: could not write block, SD reply: %x\n", r);
     waitForCard();
     return false;
   }

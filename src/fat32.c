@@ -8,11 +8,11 @@ static Volume currVolume;
 static FATInfo fatInformation;
 
 
-#define IS_EFI_PART(buff) (buff[0] == 0x45 && buff[1] == 0x46 && buff[2] == 0x49 && buff[3] == 0x20 && buff[4] == 0x50 \
+#define IS_GPT_PART(buff) (buff[0] == 0x45 && buff[1] == 0x46 && buff[2] == 0x49 && buff[3] == 0x20 && buff[4] == 0x50 \
   && buff[5] == 0x41 && buff[6] == 0x52 && buff[7] == 0x54)
 
-#define IS_FAT_PART_ENTRY(buff) (*(uint64_t*)(buff + 0x10) == 0x416b150d6e6e79b8 && \
-  *(uint64_t*)(buff + 0x18) == 0x0c9b223ef6e13186)
+#define IS_FAT_PART_ENTRY(buff) (*(uint64_t*)(buff) == 0x4433b9e5ebd0a0a2 && \
+  *(uint64_t*)(buff + 0x8) == 0xc79926b7b668c087)
 
 
 static uint64_t locateFAT(){
@@ -20,19 +20,17 @@ static uint64_t locateFAT(){
 
   readVolumeBlock(&currVolume, buff, 1);
 
-  if(IS_EFI_PART(buff)){
+  if(IS_GPT_PART(buff)){
     uint64_t partArrayStart = *(uint64_t*)(buff + 0x48);
     uint32_t partArrayLen = *(uint32_t*)(buff + 0x50);
-    printf("Partition Array Start: %d len: %d\n", (uint32_t)partArrayStart, partArrayLen);
-    for(uint64_t i = partArrayStart; i < partArrayStart + partArrayLen; i++){
-      readVolumeBlock(&currVolume, buff, i);
-      if(buff[0x10] != 0x00){
-        dumpHex(buff,512);
+
+    for(uint32_t i = 0; i < partArrayLen; i++){
+      if(i % 4 == 0){
+        readVolumeBlock(&currVolume, buff, (i/4) + partArrayStart);
       }
-      if(IS_FAT_PART_ENTRY(buff)){
-        printf("FAT\n");
-        dumpHex(buff,512);
-        //return *(uint64_t*)(buff + 0x20);
+
+      if(IS_FAT_PART_ENTRY((buff + 128*(i%4)))){
+        return *(uint64_t*)(buff + 128*(i%4) + 0x20);
       }
     }
   }
@@ -57,12 +55,9 @@ static void populateFATInformation(uint64_t fatStart){
   fatInformation.version = *(uint16_t*)(buff + 0x2a);
   fatInformation.rootCluster = *(uint32_t*)(buff + 0x2c);
 
-  //readVolumeBlock(&currVolume, buff, fatInformation.prologBlocks + fatStart);
-  //dumpHex(buff,512);
-  printf("ADDR %d \n", fatInformation.prologBlocks + (uint32_t)fatInformation.partitionStart +
-     fatInformation.blocksPerFAT*fatInformation.numFATs + fatInformation.rootCluster);
-  readVolumeBlock(&currVolume, buff, fatInformation.prologBlocks + (uint32_t)fatInformation.partitionStart +
-     fatInformation.blocksPerFAT*fatInformation.numFATs + fatInformation.rootCluster);
+  readVolumeBlock(&currVolume, buff, fatInformation.prologBlocks + fatInformation.partitionStart +
+     fatInformation.blocksPerFAT*fatInformation.numFATs +
+     fatInformation.rootCluster*fatInformation.blocksPerCluster);
   dumpHex(buff,512);
 }
 
