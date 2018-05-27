@@ -94,11 +94,7 @@ static void populateFATInformation(uint64_t fatStart){
   fatInformation.numFATs = *(buff + 0x10);
   fatInformation.blocksPerFAT = *(uint32_t*)(buff + 0x24);
   fatInformation.version = *(uint16_t*)(buff + 0x2a);
-#ifndef FORCE_ROOT_CLUSTER_ZERO
   fatInformation.rootCluster = *(uint32_t*)(buff + 0x2c);
-#else
-  fatInformation.rootCluster = 0;
-#endif
 }
 
 void initFat32Driver(void){
@@ -112,7 +108,7 @@ void initFat32Driver(void){
 
   populateFATInformation(fatAddress);
 
-  /* uncomment to see some FAT magic! 
+  /* uncomment to see some FAT magic!
   FileDescriptor fd;
   bool good = getFirstFileInDirectory("/BOOT/  ", &fd);
   while(good){

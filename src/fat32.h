@@ -27,16 +27,6 @@ typedef struct {
   uint64_t  partitionStart;
 } FATInfo;
 
-/**
-  I cannot find any information on this any where, but as far as
-  I can tell the root cluster field in the FAT "header" is (some what)
-  incorrect. It indicates root cluster as cluster 2. this cluster does contain
-  a directory but it does not contain files placed in the root. rather it contains
-  a sqlLite 3 database!!!! I suspect this is some Apple Bull Shit!
-
-  remove def to use root cluster value in FAT header
-*/
-
 typedef struct {
   char fileName[FAT32_MAX_NAME_LEN];
   // binary or directory
