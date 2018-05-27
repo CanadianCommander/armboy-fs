@@ -10,6 +10,10 @@
 #define FILE_TYPE_DIRECTORY 0
 #define FILE_TYPE_BINARY    1
 #define FILE_TYPE_VFAT      2
+#define FILE_TYPE_INVALID   3
+#define FILE_TYPE_VOLUME    4
+
+#define IS_REGULAR_FILE(file) (file.fileType == FILE_TYPE_DIRECTORY || file.fileType == FILE_TYPE_BINARY)
 
 typedef struct {
   char      oemName[8];
@@ -32,7 +36,6 @@ typedef struct {
 
   remove def to use root cluster value in FAT header
 */
-#define FORCE_ROOT_CLUSTER_ZERO 
 
 typedef struct {
   char fileName[FAT32_MAX_NAME_LEN];
@@ -41,11 +44,13 @@ typedef struct {
 
   // first cluster of the directory that contains this file
   uint32_t containingCluster;
-  // the offset of this entry from the start of the containing directory
-  // i.e. firstCluster + directoryEntryOffset*32 (because 32 bytes an entry)
+  // the offset of this entry from the start of the containing directory cluster
+  // i.e. containingCluster + directoryEntryOffset*32 (because 32 bytes an entry)
   uint32_t directoryEntryOffset;
   // start cluster of this file or directory
   uint32_t startCluster;
+
+  uint32_t fileSize;
 
 } FileDescriptor;
 
@@ -102,5 +107,12 @@ void freeClusterIterator(ClusterIter * ci);
 
 // get the next block in the given cluster iterator
 void getNextBlockClusterIterator(ClusterIter * ci);
+
+// seek blockOffset blocks in to the "future"
+void seekBlockClusterIterator(ClusterIter * ci, uint32_t blockOffset);
+
+// seek byteOffset bytes. returns offset from start of block to the byte
+// denoted by byteOffset.
+uint32_t seekByteClusterIterator(ClusterIter * ci, uint32_t byteOffset);
 
 #endif /*FAT_32_H_*/

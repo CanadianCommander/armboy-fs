@@ -10,11 +10,12 @@ static Volume currVolume;
 
 static FATInfo fatInformation;
 
-static uint32_t __populateFD(ClusterIter * ci, uint16_t offset, FileDescriptor * fd);
+static bool __populateFD(ClusterIter * ci, uint16_t offset, FileDescriptor * fd, bool vfatBefore);
 static uint32_t __decodeVFAT(ClusterIter * ci, uint16_t offset, char * fName);
-
 static void extractVFATName(wchar_t * dest, uint8_t * src);
+static void stripAppleBullShit(char * fName);
 
+/***** Disk checking macros ******/
 #define IS_GPT_PART(buff) (buff[0] == 0x45 && buff[1] == 0x46 && buff[2] == 0x49 && buff[3] == 0x20 && buff[4] == 0x50 \
   && buff[5] == 0x41 && buff[6] == 0x52 && buff[7] == 0x54)
 
@@ -28,6 +29,16 @@ static void extractVFATName(wchar_t * dest, uint8_t * src);
   *(uint64_t*)(buff + 0x8) == 0xc79926b7b668c087)
 
 #define IS_VFAT_DIR_ENTRY(ptr) (*(ptr + 0xB) == 0x0F)
+
+#define IS_VALID_DIR_ENTRY(ptr) (*ptr != 0x0)
+
+#define IS_DELETE_DIR_ENTRY(ptr) (*ptr == 0xe5)
+
+#define IS_VOLUME_DIR_ENTRY(ptr) (*(ptr + 0xB) & 0x08)
+
+#define IS_DIR_DIR_ENTRY(ptr) (*(ptr + 0xB) & 0x10)
+
+/*###### Disk checking macros ######*/
 
 static uint64_t locateFAT(){
   uint8_t buff[getVolumeBlockSize(&currVolume)];
@@ -101,15 +112,16 @@ void initFat32Driver(void){
 
   populateFATInformation(fatAddress);
 
-  ClusterIter ci;
+  /* uncomment to see some FAT magic! 
   FileDescriptor fd;
-
-  newClusterIterator(fatInformation.rootCluster, &ci);
-  __populateFD(&ci, 32, &fd);
-
-  dumpHex(ci.blockData, 512);
-
-  printf("NAME: \"%s\" Cluster: %d\n", fd.fileName, fd.startCluster);
+  bool good = getFirstFileInDirectory("/BOOT/  ", &fd);
+  while(good){
+    if(IS_REGULAR_FILE(fd)){
+      printf("FILE: %s", fd.fileName);
+    }
+    good = getNextFileInDirectory(&fd);
+  }
+  */
 }
 
 
@@ -130,18 +142,19 @@ void printFATInfo(void){
 void readCluster(uint32_t cluster, uint16_t block, uint8_t * buffer){
   uint32_t bAddr = fatInformation.prologBlocks + fatInformation.partitionStart +
                    fatInformation.blocksPerFAT*fatInformation.numFATs +
-                   cluster*fatInformation.blocksPerCluster + block;
+                   (cluster - 2)*fatInformation.blocksPerCluster + block;// -2 because sector numbers start at 2
+
   readVolumeBlock(&currVolume, buffer, bAddr);
 }
 
 uint32_t fetchNextCluster(uint32_t cluster){
   uint32_t vblock = getVolumeBlockSize(&currVolume);
   uint8_t buffer[vblock];
-  uint32_t fatAddress = fatInformation.prologBlocks + fatInformation.partitionStart + (cluster / vblock);
+  uint32_t fatAddress = fatInformation.prologBlocks + fatInformation.partitionStart + ((cluster*4) / vblock);
 
   readVolumeBlock(&currVolume, buffer, fatAddress);
 
-  uint32_t nextCluster = *(buffer + (cluster % vblock));
+  uint32_t nextCluster = *(buffer + ((cluster*4) % vblock));
   if(nextCluster < 0x0fffffff){
     return nextCluster;
   }
@@ -151,43 +164,102 @@ uint32_t fetchNextCluster(uint32_t cluster){
 }
 
 bool getFirstFileInDirectory(char * path, FileDescriptor * fd){
-
+  FileDescriptor dir;
+  getDirectory(path, &dir);
+  return getFirstFileInDirectoryCluster(dir.startCluster, fd);
 }
 
 bool getFirstFileInDirectoryCluster(uint32_t cluster, FileDescriptor * fd){
-
+  ClusterIter ci;
+  newClusterIterator(cluster, &ci);
+  bool res = __populateFD(&ci, 0, fd, false);
+  freeClusterIterator(&ci);
+  return res;
 }
 
 bool getNextFileInDirectory(FileDescriptor * fd){
+  ClusterIter ci;
+  newClusterIterator(fd->containingCluster, &ci);
+  uint32_t blockOffset = seekByteClusterIterator(&ci, fd->directoryEntryOffset);
 
+  bool res = __populateFD(&ci, blockOffset + FAT32_DIR_ENTRY_SIZE, fd, false);
+  freeClusterIterator(&ci);
+  return res;
 }
 
-static uint32_t __getDirectory(char * path);
+static FileDescriptor __getDirectory(char * path);
+static void stripPath(char * path);
 void getDirectory(char * path, FileDescriptor * fd){
+  char pathCpy[strlen(path)];
+  strcpy(pathCpy, path);
 
+  stripPath(pathCpy);
+  FileDescriptor dir = __getDirectory(pathCpy);
+  if(dir.fileType != FILE_TYPE_INVALID){
+    char * slashPtr = strrchr(pathCpy, '/');
+    *fd = dir;
+    memset(fd->fileName, 0, FAT32_MAX_NAME_LEN);
+    strcpy(fd->fileName, slashPtr);
+  }
 }
 
-static uint32_t __populateFD(ClusterIter * ci, uint16_t offset, FileDescriptor * fd){
+//strip tailing white space and '/'
+static void stripPath(char * path){
+  char * spacePtr = strchr(path, ' ');
+  if(spacePtr){
+    *spacePtr = 0x0;
+  }
+  else {
+    spacePtr = (path + strlen(path) -1);
+  }
+
+  if(*(spacePtr - 1) == '/'){
+    *(spacePtr - 1) = 0x0;
+  }
+}
+
+static bool __populateFD(ClusterIter * ci, uint16_t offset, FileDescriptor * fd, bool vfatBefore){
   if(IS_VFAT_DIR_ENTRY((ci->blockData + offset)) && *(ci->blockData + offset) & 0x40 ){
     //first entry in a VFAT chain
     uint32_t realEntryOffset = __decodeVFAT(ci, offset, fd->fileName);
-    return __populateFD(ci, realEntryOffset, fd);
+    stripAppleBullShit(fd->fileName);
+    return __populateFD(ci, realEntryOffset, fd, true);
   }
-  else if (!IS_VFAT_DIR_ENTRY((ci->blockData + offset))){
-    //normal entry (name should have been populated from VFAT)
+  else if (IS_VALID_DIR_ENTRY((ci->blockData + offset)) && !IS_VFAT_DIR_ENTRY((ci->blockData + offset))){
+    if(!vfatBefore){
+      //use short name
+      memset(fd->fileName, 0 , FAT32_MAX_NAME_LEN);
+      memcpy(fd->fileName, ci->blockData + offset, 8);
+      stripAppleBullShit(fd->fileName);
+    }
+    else {
+      // file name is already filled out from VFAT
+    }
+
     uint8_t * entryPtr = ci->blockData + offset;
+
     fd->containingCluster = ci->currCluster;
     fd->directoryEntryOffset = offset;
     fd->startCluster =  ((uint32_t)*(entryPtr + 0x15)<<24) | ((uint32_t)*(entryPtr + 0x14)<<16) |
                         ((uint32_t)*(entryPtr + 0x1B)<<8) | (uint32_t)*(entryPtr + 0x1A);
-    if(*(entryPtr + 0xB) & 0x10){
+    fd->fileSize = *(uint32_t*)(entryPtr + 0x1C);
+
+    if(IS_DELETE_DIR_ENTRY(entryPtr)){
+      fd->fileType = FILE_TYPE_INVALID;
+    }
+    else if(IS_DIR_DIR_ENTRY(entryPtr)){
       fd->fileType = FILE_TYPE_DIRECTORY;
+    }
+    else if (IS_VOLUME_DIR_ENTRY(entryPtr)){
+      fd->fileType = FILE_TYPE_VOLUME;
     }
     else{
       fd->fileType = FILE_TYPE_BINARY;
     }
+    return true;
   }
-  return offset;
+
+  return false;
 }
 
 static uint32_t __decodeVFAT(ClusterIter * ci, uint16_t offset, char * fName){
@@ -200,9 +272,7 @@ static uint32_t __decodeVFAT(ClusterIter * ci, uint16_t offset, char * fName){
       uint8_t * vFatPtr = ci->blockData + i;
       wchar_t wName[14];
       extractVFATName(wName, vFatPtr);
-      dumpHex((uint8_t*)wName,14*4);
       wcstombs(entries + countEntries*FAT32_DIR_ENTRY_SIZE, wName, FAT32_DIR_ENTRY_SIZE-1);
-      printf("PART: %s \n", (char*)(entries + countEntries*FAT32_DIR_ENTRY_SIZE));
       countEntries ++;
     }
     else {
@@ -227,41 +297,48 @@ static uint32_t __decodeVFAT(ClusterIter * ci, uint16_t offset, char * fName){
   return 0;
 }
 
-static uint32_t __getDirectory(char * path){
+static FileDescriptor __getDirectory(char * path){
   char subPath[strlen(path)];
   memset(subPath, 0, strlen(path));
   char * slashPtr = strrchr(path, '/');
 
-  if((uint32_t)slashPtr - (uint32_t)path > 0){
+  if(*(uint8_t*)(slashPtr + 1) != 0x00){
     //there are directories bellow this one
-    memcpy(subPath, path, (uint32_t)slashPtr - (uint32_t)path);
-    uint32_t parentDir = __getDirectory(subPath);
+    memcpy(subPath, path, ((uint32_t)slashPtr + 1) - (uint32_t)path);
+    FileDescriptor parentDir = __getDirectory(subPath);
 
-    if(parentDir > 0){
+    if(parentDir.fileType != FILE_TYPE_INVALID){
       //look for dir
       memset(subPath, 0, strlen(path));
-      strcpy(subPath, slashPtr);
+      strcpy(subPath, slashPtr + 1);
 
       FileDescriptor fd;
-      getFirstFileInDirectoryCluster(parentDir, &fd);
+      getFirstFileInDirectoryCluster(parentDir.startCluster, &fd);
 
       for(;;){
         if(strcmp(fd.fileName,subPath) == 0 && fd.fileType == FILE_TYPE_DIRECTORY){
-          return fd.startCluster;
+          return fd;
         }
         if(!getNextFileInDirectory(&fd)){
-          return 0;
+          FileDescriptor bad;
+          bad.fileType = FILE_TYPE_INVALID;
+          return bad;
         }
       }
     }
     else {
       //error
-      return 0;
+      FileDescriptor bad;
+      bad.fileType = FILE_TYPE_INVALID;
+      return bad;
     }
   }
   else {
     //we must be in root directory
-    return fatInformation.rootCluster;
+    FileDescriptor rfd;
+    rfd.startCluster = fatInformation.rootCluster;
+    rfd.fileType = FILE_TYPE_DIRECTORY;
+    return rfd;
   }
 }
 
@@ -291,11 +368,37 @@ void getNextBlockClusterIterator(ClusterIter * ci){
     if(ci->currCluster == 0){
       ci->eof = true;
     }
+    else {
+      readCluster(ci->currCluster, ci->currBlock, ci->blockData);
+    }
   }
   else {
     ci->currBlock ++;
     readCluster(ci->currCluster, ci->currBlock, ci->blockData);
   }
+}
+
+void seekBlockClusterIterator(ClusterIter * ci, uint32_t blockOffset){
+
+  if(ci->currBlock + blockOffset + 1 > fatInformation.blocksPerCluster){
+    ci->currCluster = fetchNextCluster(ci->currCluster);
+    blockOffset -= (fatInformation.blocksPerCluster - ci->currBlock);
+    ci->currBlock = 0;
+    seekBlockClusterIterator(ci, blockOffset);
+  }
+  else {
+    ci->currBlock += blockOffset;
+    readCluster(ci->currCluster, ci->currBlock, ci->blockData);
+  }
+}
+
+uint32_t seekByteClusterIterator(ClusterIter * ci, uint32_t byteOffset){
+  uint32_t blocks = (byteOffset / fatInformation.blockSize);
+  uint32_t bOffset = (byteOffset % fatInformation.blockSize);
+
+  seekBlockClusterIterator(ci, blocks);
+
+  return bOffset;
 }
 
 static void extractVFATName(wchar_t * dest, uint8_t * src){
@@ -316,4 +419,13 @@ static void extractVFATName(wchar_t * dest, uint8_t * src){
   }
 
   *dest = 0x00;
+}
+
+static void stripAppleBullShit(char * fName){
+  uint32_t len = strlen(fName);
+  for(uint32_t i = 0; i < len; i++){
+    if(fName[i] == 0x20){
+      fName[i] = 0x0;
+    }
+  }
 }
