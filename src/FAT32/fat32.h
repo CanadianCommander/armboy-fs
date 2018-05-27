@@ -40,6 +40,9 @@ typedef struct {
   // start cluster of this file or directory
   uint32_t startCluster;
 
+  // current offset in bytes from start of file.
+  uint32_t filePosition;
+
   uint32_t fileSize;
 
 } FileDescriptor;
@@ -104,5 +107,11 @@ void seekBlockClusterIterator(ClusterIter * ci, uint32_t blockOffset);
 // seek byteOffset bytes. returns offset from start of block to the byte
 // denoted by byteOffset.
 uint32_t seekByteClusterIterator(ClusterIter * ci, uint32_t byteOffset);
+
+/**
+  read count bytes at offset from the current block denoted by the cluster iterator.
+  @return the number of bytes actually read.
+*/
+uint32_t readClusterIterator(ClusterIter * ci, uint8_t * buff, uint32_t offset, uint32_t count);
 
 #endif /*FAT_32_H_*/

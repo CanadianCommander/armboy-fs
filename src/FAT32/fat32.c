@@ -8,6 +8,8 @@
 #include <string.h>
 #include <wchar.h>
 
+#include "fileOps.h"
+
 static Volume currVolume;
 
 static FATInfo fatInformation;
@@ -52,16 +54,14 @@ void initFat32Driver(void){
 
   populateFATInformation(fatAddress);
 
-  /* TEST remove at some point
+  /*
   FileDescriptor fd;
-  bool good = getFirstFileInDirectory("/BOOT/STUFF/  ", &fd);
-  while(good){
-    if(IS_REGULAR_FILE(fd)){
-      printf("FILE: %s\n", fd.fileName);
-    }
-    good = getNextFileInDirectory(&fd);
-  }
-  */
+  uint8_t buff[100];
+  memset(buff, 0, 100);
+  if(getFile("message.txt", &fd)){
+    uint32_t read = readBytes(buff, 100, &fd);
+    printf("READ, %d BYTES FROM FILE %s IT CONTAINS:\n%s", read, fd.fileName, buff);
+  }*/
 }
 
 
@@ -166,6 +166,7 @@ static bool __populateFD(ClusterIter * ci, uint16_t offset, FileDescriptor * fd,
     fd->startCluster =  ((uint32_t)*(entryPtr + 0x15)<<24) | ((uint32_t)*(entryPtr + 0x14)<<16) |
                         ((uint32_t)*(entryPtr + 0x1B)<<8) | (uint32_t)*(entryPtr + 0x1A);
     fd->fileSize = *(uint32_t*)(entryPtr + 0x1C);
+    fd->filePosition = 0;
 
     if(IS_DELETE_DIR_ENTRY(entryPtr)){
       fd->fileType = FILE_TYPE_INVALID;
@@ -322,4 +323,16 @@ uint32_t seekByteClusterIterator(ClusterIter * ci, uint32_t byteOffset){
   seekBlockClusterIterator(ci, blocks);
 
   return bOffset;
+}
+
+uint32_t readClusterIterator(ClusterIter * ci, uint8_t * buff, uint32_t offset, uint32_t count){
+  if(offset + count > fatInformation.blockSize){
+    uint32_t readBytes = (fatInformation.blockSize - offset);
+    memcpy(buff, ci->blockData + offset, readBytes);
+    return readBytes;
+  }
+  else {
+    memcpy(buff, ci->blockData + offset, count);
+    return count;
+  }
 }

@@ -24,6 +24,22 @@ void stripPath(char * path){
   }
 }
 
+void stripFileName(char * path){
+  char * slashPtr = strrchr(path, '/');
+  if(slashPtr){
+    *slashPtr = 0x0;
+  }
+}
+
+void getFileName(char * path){
+  char * slashPtr = strrchr(path, '/');
+  if(slashPtr){
+    strcpy(path, slashPtr +1);
+  }
+
+}
+
+
 void extractVFATName(wchar_t * dest, uint8_t * src){
   //NOTE wchar_t is 32 bit!!!!!! (It is 16 on disk)
   uint8_t * p = src + 0x1;
