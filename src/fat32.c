@@ -108,12 +108,12 @@ void initFat32Driver(void){
 
   populateFATInformation(fatAddress);
 
-  /* uncomment to see some FAT magic!
+  /* TEST remove at some point 
   FileDescriptor fd;
-  bool good = getFirstFileInDirectory("/BOOT/  ", &fd);
+  bool good = getFirstFileInDirectory("/BOOT/STUFF/  ", &fd);
   while(good){
     if(IS_REGULAR_FILE(fd)){
-      printf("FILE: %s", fd.fileName);
+      printf("FILE: %s\n", fd.fileName);
     }
     good = getNextFileInDirectory(&fd);
   }
@@ -298,9 +298,9 @@ static FileDescriptor __getDirectory(char * path){
   memset(subPath, 0, strlen(path));
   char * slashPtr = strrchr(path, '/');
 
-  if(*(uint8_t*)(slashPtr + 1) != 0x00){
+  if(slashPtr && *(uint8_t*)(slashPtr + 1) != 0x00){
     //there are directories bellow this one
-    memcpy(subPath, path, ((uint32_t)slashPtr + 1) - (uint32_t)path);
+    memcpy(subPath, path, ((uint32_t)slashPtr) - (uint32_t)path);
     FileDescriptor parentDir = __getDirectory(subPath);
 
     if(parentDir.fileType != FILE_TYPE_INVALID){
@@ -312,7 +312,7 @@ static FileDescriptor __getDirectory(char * path){
       getFirstFileInDirectoryCluster(parentDir.startCluster, &fd);
 
       for(;;){
-        if(strcmp(fd.fileName,subPath) == 0 && fd.fileType == FILE_TYPE_DIRECTORY){
+        if(strcmp(fd.fileName, subPath) == 0 && fd.fileType == FILE_TYPE_DIRECTORY){
           return fd;
         }
         if(!getNextFileInDirectory(&fd)){
