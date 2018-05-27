@@ -1,5 +1,7 @@
 #include "fat32.h"
-#include "volume.h"
+#include "path.h"
+#include "partition.h"
+#include "../volume.h"
 #include <util/debug.h>
 #include <memory.h>
 #include <stdlib.h>
@@ -12,73 +14,15 @@ static FATInfo fatInformation;
 
 static bool __populateFD(ClusterIter * ci, uint16_t offset, FileDescriptor * fd, bool vfatBefore);
 static uint32_t __decodeVFAT(ClusterIter * ci, uint16_t offset, char * fName);
-static void extractVFATName(wchar_t * dest, uint8_t * src);
-static void stripAppleBullShit(char * fName);
+static FileDescriptor __getDirectory(char * path);
 
-/***** Disk checking macros ******/
-#define IS_GPT_PART(buff) (buff[0] == 0x45 && buff[1] == 0x46 && buff[2] == 0x49 && buff[3] == 0x20 && buff[4] == 0x50 \
-  && buff[5] == 0x41 && buff[6] == 0x52 && buff[7] == 0x54)
-
-#define IS_MBR_PART(buff) (buff[510] == 0x55 && buff[511] == 0xaa)
-
-#define IS_MBR_PART_VALID(ptr) ((*ptr & 0x7F) == 0x00)
-
-#define IS_MBR_PART_FAT(ptr)(*(ptr + 0x4) & 0xfe)
-
-#define IS_FAT_PART_ENTRY(buff) (*(uint64_t*)(buff) == 0x4433b9e5ebd0a0a2 && \
-  *(uint64_t*)(buff + 0x8) == 0xc79926b7b668c087)
-
+/***** handy directory entry macros ******/
 #define IS_VFAT_DIR_ENTRY(ptr) (*(ptr + 0xB) == 0x0F)
-
 #define IS_VALID_DIR_ENTRY(ptr) (*ptr != 0x0)
-
 #define IS_DELETE_DIR_ENTRY(ptr) (*ptr == 0xe5)
-
 #define IS_VOLUME_DIR_ENTRY(ptr) (*(ptr + 0xB) & 0x08)
-
 #define IS_DIR_DIR_ENTRY(ptr) (*(ptr + 0xB) & 0x10)
-
-/*###### Disk checking macros ######*/
-
-static uint64_t locateFAT(){
-  uint8_t buff[getVolumeBlockSize(&currVolume)];
-
-  readVolumeBlock(&currVolume, buff, 1);
-
-  if(IS_GPT_PART(buff)){
-    uint64_t partArrayStart = *(uint64_t*)(buff + 0x48);
-    uint32_t partArrayLen = *(uint32_t*)(buff + 0x50);
-
-    for(uint32_t i = 0; i < partArrayLen; i++){
-      if(i % 4 == 0){
-        readVolumeBlock(&currVolume, buff, (i/4) + partArrayStart);
-      }
-
-      if(IS_FAT_PART_ENTRY((buff + 128*(i%4)))){
-        return *(uint64_t*)(buff + 128*(i%4) + 0x20);
-      }
-    }
-
-    return 0;
-  }
-  else {
-    //attempt to read MBR (even GTP has backup MBR at 0x00)
-    readVolumeBlock(&currVolume, buff, 0);
-
-    if (IS_MBR_PART(buff)){
-      //four 16 byte partition entries (NO EBR support... come on if you want more than four just use GPT)
-      for(uint32_t i = 0x1BE; i < 0x1FE; i += 0x10){
-        if(IS_MBR_PART_VALID((buff + i)) && IS_MBR_PART_FAT((buff + i))){
-          return (uint64_t)(*(uint32_t*)(buff + i + 0x8));
-        }
-      }
-      return 0;
-    }
-    else {
-      return 0;
-    }
-  }
-}
+/*###### handy directory entry macros ######*/
 
 //fill in the FAT information structure
 static void populateFATInformation(uint64_t fatStart){
@@ -100,7 +44,7 @@ static void populateFATInformation(uint64_t fatStart){
 void initFat32Driver(void){
   setAbstractionPtrsSDCard(&currVolume);
 
-  uint64_t fatAddress = locateFAT();
+  uint64_t fatAddress = locateFAT(&currVolume);
   if(fatAddress == 0){
     printf("ERROR: could not locate FAT partition!\n");
     return;
@@ -108,7 +52,7 @@ void initFat32Driver(void){
 
   populateFATInformation(fatAddress);
 
-  /* TEST remove at some point 
+  /* TEST remove at some point
   FileDescriptor fd;
   bool good = getFirstFileInDirectory("/BOOT/STUFF/  ", &fd);
   while(good){
@@ -183,8 +127,6 @@ bool getNextFileInDirectory(FileDescriptor * fd){
   return res;
 }
 
-static FileDescriptor __getDirectory(char * path);
-static void stripPath(char * path);
 void getDirectory(char * path, FileDescriptor * fd){
   char pathCpy[strlen(path)];
   strcpy(pathCpy, path);
@@ -196,21 +138,6 @@ void getDirectory(char * path, FileDescriptor * fd){
     *fd = dir;
     memset(fd->fileName, 0, FAT32_MAX_NAME_LEN);
     strcpy(fd->fileName, slashPtr);
-  }
-}
-
-//strip tailing white space and '/'
-static void stripPath(char * path){
-  char * spacePtr = strchr(path, ' ');
-  if(spacePtr){
-    *spacePtr = 0x0;
-  }
-  else {
-    spacePtr = (path + strlen(path) -1);
-  }
-
-  if(*(spacePtr - 1) == '/'){
-    *(spacePtr - 1) = 0x0;
   }
 }
 
@@ -395,33 +322,4 @@ uint32_t seekByteClusterIterator(ClusterIter * ci, uint32_t byteOffset){
   seekBlockClusterIterator(ci, blocks);
 
   return bOffset;
-}
-
-static void extractVFATName(wchar_t * dest, uint8_t * src){
-  //NOTE wchar_t is 32 bit!!!!!! (It is 16 on disk)
-  uint8_t * p = src + 0x1;
-  for(uint16_t i = 0; i < 10; i+=2){
-    *dest++ = (uint32_t)((*(p + i)) | (*(p + i + 1) << 8));
-  }
-
-  p = src + 0x0E;
-  for(uint16_t i = 0; i < 12; i+=2){
-    *dest++ = (uint32_t)((*(p + i)) | (*(p + i + 1) << 8));
-  }
-
-  p = src + 0x1C;
-  for(uint16_t i = 0; i < 4; i+=2){
-    *dest++ = (uint32_t)((*(p + i)) | (*(p + i + 1) << 8));
-  }
-
-  *dest = 0x00;
-}
-
-static void stripAppleBullShit(char * fName){
-  uint32_t len = strlen(fName);
-  for(uint32_t i = 0; i < len; i++){
-    if(fName[i] == 0x20){
-      fName[i] = 0x0;
-    }
-  }
 }

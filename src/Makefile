@@ -3,7 +3,7 @@ CFLAGS = --std=gnu11 -Ofast  -mlong-calls -fPIC -mno-pic-data-is-text-relative -
 OBYCP = arm-none-eabi-objcopy
 
 INCLUDE = -I ../armboy-kernel/src/ -I ../../../tools/ATMEL -I ../../../tools/CMSIS/include
-CFILES = sdDriver.c fat32.c volume.c
+CFILES = sdDriver.c FAT32/*.c volume.c
 
 fs.bin : $(CFILES) kmod.S
 	$(CC) $(CFLAGS) -o fs.elf $(CFILES) kmod.S $(INCLUDE)
