@@ -44,6 +44,8 @@ uint32_t readBytes(uint8_t * buffer, uint32_t count, FileDescriptor * fd){
     }
   }
 
+  fd->filePosition += readBytes;
+
 
   freeClusterIterator(&ci);
   return readBytes;

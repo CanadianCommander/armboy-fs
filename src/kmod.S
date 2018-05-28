@@ -24,10 +24,10 @@ __jump_vector:
 	/* jump vectors. replace Default_Handler with you handler as required*/
   .long initDefault  // 0
   .long initFat32Driver
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
-  .long Default_Handler
+  .long listDirCall
+  .long getFileCall
+  .long readBytesCall
+  .long seekCall
   .long Default_Handler
   .long Default_Handler
   .long Default_Handler
