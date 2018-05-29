@@ -73,7 +73,6 @@ bool initDefault(void){
     4. send CMD8 to query SD voltage range (but, ignore result :P) <- [looks optional but, is required]
     5. send ACMD41 to switch the card from idle to active mode
   */
-
   initSPI(toPin(PIO_BANK_A,PIO_PA6,NULL));
   int tOut = 0;
 

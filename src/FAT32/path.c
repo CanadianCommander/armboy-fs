@@ -14,13 +14,14 @@ void stripPath(char * path){
   char * spacePtr = strchr(path, ' ');
   if(spacePtr){
     *spacePtr = 0x0;
+    spacePtr--;
   }
   else {
     spacePtr = (path + strlen(path) -1);
   }
 
-  if(*(spacePtr - 1) == '/'){
-    *(spacePtr - 1) = 0x0;
+  if(*spacePtr == '/'){
+    *spacePtr = 0x0;
   }
 }
 

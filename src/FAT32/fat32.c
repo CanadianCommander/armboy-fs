@@ -54,14 +54,32 @@ void initFat32Driver(void){
 
   populateFATInformation(fatAddress);
 
+
+  LsDir ld;
+  listDir("/BOOT/", &ld);
+  while(ld.more){
+    for(int i =0; i < ld.countFiles; i++){
+      printf("FILE: %s\n", ld.files[i].fileName);
+    }
+    listDir("/BOOT/", &ld);
+  }
+  for(int i =0; i < ld.countFiles; i++){
+    printf("FILE: %s\n", ld.files[i].fileName);
+  }
+
   /*
+  while(getNextFileInDirectory(&iter)){
+    printf("FILE %s\n", iter.fileName);
+  }
+  */
+
   FileDescriptor fd;
   uint8_t buff[100];
   memset(buff, 0, 100);
   if(getFile("message.txt", &fd)){
     uint32_t read = readBytes(buff, 100, &fd);
     printf("READ, %d BYTES FROM FILE %s IT CONTAINS:\n%s", read, fd.fileName, buff);
-  }*/
+  }
 }
 
 
@@ -120,9 +138,9 @@ bool getFirstFileInDirectoryCluster(uint32_t cluster, FileDescriptor * fd){
 bool getNextFileInDirectory(FileDescriptor * fd){
   ClusterIter ci;
   newClusterIterator(fd->containingCluster, &ci);
-  uint32_t blockOffset = seekByteClusterIterator(&ci, fd->directoryEntryOffset);
+  uint32_t blockOffset = seekByteClusterIterator(&ci, fd->directoryEntryOffset + FAT32_DIR_ENTRY_SIZE);
 
-  bool res = __populateFD(&ci, blockOffset + FAT32_DIR_ENTRY_SIZE, fd, false);
+  bool res = __populateFD(&ci, blockOffset, fd, false);
   freeClusterIterator(&ci);
   return res;
 }
@@ -182,7 +200,6 @@ static bool __populateFD(ClusterIter * ci, uint16_t offset, FileDescriptor * fd,
     }
     return true;
   }
-
   return false;
 }
 
@@ -322,6 +339,7 @@ uint32_t seekByteClusterIterator(ClusterIter * ci, uint32_t byteOffset){
 
   seekBlockClusterIterator(ci, blocks);
 
+  ci->seekOffset = bOffset;
   return bOffset;
 }
 
@@ -335,4 +353,15 @@ uint32_t readClusterIterator(ClusterIter * ci, uint8_t * buff, uint32_t offset, 
     memcpy(buff, ci->blockData + offset, count);
     return count;
   }
+}
+
+uint32_t readClusterIteratorSeekOffset(ClusterIter * ci, uint8_t * buff, uint32_t count){
+  uint32_t read =  readClusterIterator(ci, buff, ci->seekOffset, count);
+  if(ci->seekOffset + read >= fatInformation.blockSize){
+    ci->seekOffset = 0;
+  }
+  else {
+    ci->seekOffset += read;
+  }
+  return read;
 }

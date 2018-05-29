@@ -90,6 +90,7 @@ void getDirectory(char * path, FileDescriptor * fd);
 typedef struct {
   uint32_t currCluster;
   uint8_t currBlock;
+  uint32_t seekOffset;
   bool eof;
   uint8_t * blockData;
 } ClusterIter;
@@ -113,5 +114,6 @@ uint32_t seekByteClusterIterator(ClusterIter * ci, uint32_t byteOffset);
   @return the number of bytes actually read.
 */
 uint32_t readClusterIterator(ClusterIter * ci, uint8_t * buff, uint32_t offset, uint32_t count);
+uint32_t readClusterIteratorSeekOffset(ClusterIter * ci, uint8_t * buff, uint32_t count);
 
 #endif /*FAT_32_H_*/
