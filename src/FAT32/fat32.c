@@ -54,32 +54,6 @@ void initFat32Driver(void){
 
   populateFATInformation(fatAddress);
 
-
-  LsDir ld;
-  listDir("/BOOT/", &ld);
-  while(ld.more){
-    for(int i =0; i < ld.countFiles; i++){
-      printf("FILE: %s\n", ld.files[i].fileName);
-    }
-    listDir("/BOOT/", &ld);
-  }
-  for(int i =0; i < ld.countFiles; i++){
-    printf("FILE: %s\n", ld.files[i].fileName);
-  }
-
-  /*
-  while(getNextFileInDirectory(&iter)){
-    printf("FILE %s\n", iter.fileName);
-  }
-  */
-
-  FileDescriptor fd;
-  uint8_t buff[100];
-  memset(buff, 0, 100);
-  if(getFile("message.txt", &fd)){
-    uint32_t read = readBytes(buff, 100, &fd);
-    printf("READ, %d BYTES FROM FILE %s IT CONTAINS:\n%s", read, fd.fileName, buff);
-  }
 }
 
 
