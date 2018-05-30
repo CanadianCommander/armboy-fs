@@ -53,7 +53,6 @@ void initFat32Driver(void){
   }
 
   populateFATInformation(fatAddress);
-
 }
 
 
@@ -86,7 +85,7 @@ uint32_t fetchNextCluster(uint32_t cluster){
 
   readVolumeBlock(&currVolume, buffer, fatAddress);
 
-  uint32_t nextCluster = *(buffer + ((cluster*4) % vblock));
+  uint32_t nextCluster = *(uint32_t*)(buffer + ((cluster*4) % vblock));
   if(nextCluster < 0x0fffffff){
     return nextCluster;
   }
@@ -276,7 +275,7 @@ void getNextBlockClusterIterator(ClusterIter * ci){
     return;
   }
 
-  if(ci->currBlock + 1 > fatInformation.blocksPerCluster - 1){
+  if(ci->currBlock + 1 >= fatInformation.blocksPerCluster){
     //fetch next cluster
     ci->currCluster = fetchNextCluster(ci->currCluster);
     ci->currBlock = 0;
@@ -333,6 +332,7 @@ uint32_t readClusterIteratorSeekOffset(ClusterIter * ci, uint8_t * buff, uint32_
   uint32_t read =  readClusterIterator(ci, buff, ci->seekOffset, count);
   if(ci->seekOffset + read >= fatInformation.blockSize){
     ci->seekOffset = 0;
+    getNextBlockClusterIterator(ci);
   }
   else {
     ci->seekOffset += read;
