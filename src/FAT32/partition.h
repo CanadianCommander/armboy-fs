@@ -1,7 +1,7 @@
 #ifndef PARTITION_H_
 #define PARTITION_H_
 #include <stdint.h>
-#include "../Volume.h"
+#include "../volume.h"
 
 /** partition data structure checking macros **/
 #define IS_GPT_PART(ptr) (ptr[0] == 0x45 && ptr[1] == 0x46 && ptr[2] == 0x49 && ptr[3] == 0x20 && ptr[4] == 0x50 \
